@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmallworldHQ</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>SmallworldHQ</h1>
+      <span class="meta" id="meta">Loading…</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <a href="#players" role="tab" data-view="players">Players</a>
+      <a href="#teams" role="tab" data-view="teams">Teams</a>
+      <a href="#schedule" role="tab" data-view="schedule">Schedule</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-players" class="view" hidden></section>
+    <section id="view-teams" class="view" hidden></section>
+    <section id="view-schedule" class="view" hidden></section>
+  </main>
+
+  <footer class="credits">
+    Data: NHL (api-web.nhle.com, api.nhle.com) · probable goalies from ESPN ·
+    expected goals (xG, xGF%, GSAx) from <a href="https://moneypuck.com" target="_blank" rel="noopener noreferrer">MoneyPuck.com</a>.
+    Non-commercial fan project, not affiliated with the NHL.
+  </footer>
+
+  <div id="panel" class="overlay" hidden>
+    <div class="panel" role="dialog" aria-modal="true" aria-label="Player game log">
+      <button type="button" id="panel-close" class="close" aria-label="Close">×</button>
+      <div id="panel-body"></div>
+    </div>
+  </div>
+
+  <div id="tip" class="tip" role="tooltip" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
