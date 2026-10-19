@@ -16,7 +16,9 @@ import csv
 import datetime as dt
 import io
 import json
+import re
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -497,6 +499,71 @@ def player_labels(lines):
 # ---------------------------------------------------------------- main
 
 
+# ---------------------------------------------------------------- Terrier starting value (TSV)
+#
+# players.txt (project root) is a static, tab-separated price list ("$" column) with names as
+# "first initial + surname". Each site skater gets the price of its match, or 0 without one.
+# Players in the list that aren't on the site are ignored.
+
+TSV_FILE = ROOT / "players.txt"
+TSV_TEAM_FIX = {"CAL": "CGY"}
+# Same initial, surname, team and position in the list, so the file alone can't tell them apart
+TSV_OVERRIDES = {"Albert Johansson": 1.08, "Anton Johansson": 0.50}
+
+
+def _fold(s):
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z ]", "", s.replace("-", " ")).split()
+
+
+def _fix_mojibake(s):
+    # Some names were saved as UTF-8 read as Latin-1 ("LafreniÃ¨re" for "Lafrenière")
+    try:
+        return s.encode("latin-1").decode("utf-8") if "Ã" in s else s
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+
+
+def load_tsv_list():
+    rows = []
+    if not TSV_FILE.exists():
+        return rows
+    for line in TSV_FILE.read_text(encoding="utf-8-sig").splitlines()[1:]:
+        f = line.split("\t")
+        while f and not f[0].strip():
+            f.pop(0)  # some lines start with a stray tab
+        if len(f) < 4 or f[1] == "G":
+            continue
+        try:
+            price = float(f[3])
+        except ValueError:
+            continue
+        initial, _, last = _fix_mojibake(f[0].strip()).partition(" ")
+        rows.append({"ini": "".join(_fold(initial))[:1], "last": _fold(last), "team": TSV_TEAM_FIX.get(f[2], f[2]),
+                     "fwd": f[1] in ("C", "W"), "tsv": price})
+    return rows
+
+
+def add_tsv(players):
+    """Set p["tsv"] for every skater: initial + surname (full or last word), then team, then F/D."""
+    rows = load_tsv_list()
+    matched = 0
+    for p in players:
+        if p["name"] in TSV_OVERRIDES:
+            p["tsv"] = TSV_OVERRIDES[p["name"]]
+            matched += 1
+            continue
+        first, _, last = p["name"].partition(" ")
+        ini, surname = "".join(_fold(first))[:1], _fold(last)
+        cands = [r for r in rows if r["ini"] == ini and surname and (r["last"] == surname or r["last"] == surname[-1:])]
+        for narrow in (lambda r: r["team"] == p["team"], lambda r: r["fwd"] == (p["pos"] != "D")):
+            if len(cands) > 1 and any(narrow(r) for r in cands):
+                cands = [r for r in cands if narrow(r)]
+        p["tsv"] = cands[0]["tsv"] if len(cands) == 1 else 0
+        matched += len(cands) == 1
+    print(f"  TSV: {matched} of {len(players)} skaters matched in {TSV_FILE.name}")
+
+
 # ---------------------------------------------------------------- MoneyPuck expected goals
 #
 # MoneyPuck's downloadable CSVs are free for non-commercial use with credit to MoneyPuck.com
@@ -632,6 +699,7 @@ def main():
         lines.setdefault(ab, {"forwards": [], "defense": [], "pp": [], "date": None, "opp": None})
         lines[ab].update(d)
     print("game logs..."); gamelogs = build_gamelogs(games)
+    print("TSV..."); add_tsv(players)
     print("MoneyPuck xG..."); add_xg(args.season, players, recent, teams, goalies, gamelogs)
 
     labels = player_labels(lines)

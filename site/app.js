@@ -105,6 +105,7 @@ const PLAYER_COLS = [
   { key: 'pos', label: 'Pos' },
   { key: 'line', label: 'Line', title: 'Even-strength line from recent shift charts', fmt: r => r.line ? `<span class="tag">${r.line}</span>` : dash },
   { key: 'pp', label: 'PP', title: 'Power-play unit from recent shift charts', fmt: r => r.pp ? `<span class="tag ${r.pp === 'PP1' ? 'pp1' : ''}">${r.pp}</span>` : dash },
+  { key: 'tsv', label: 'TSV', num: true, title: 'Terrier starting value ($ from players.txt; 0 = not in the list)', fmt: r => r.tsv ? r.tsv.toFixed(2) : '<span class="muted">0</span>' },
   { key: 'gp', label: 'GP', num: true },
   { key: 'g', label: 'G', num: true },
   { key: 'a', label: 'A', num: true },
