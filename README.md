@@ -42,7 +42,6 @@ Neither API is officially documented, so endpoints can change. MoneyPuck's data 
   - Teams: 5v5 xGF%, plus xGF and xGA per game in all situations.
   - Goalies: GSAx (goals saved above expected = xGA − GA), for the season and per game.
   - MoneyPuck updates nightly, so the latest games may not have xG yet; the Players page says which date it covers.
-- **TSV (Terrier starting value)** is the `$` column of `players.txt` in the project root, a static list that never changes. Names there are first initial + surname, so a skater matches on initial and surname (full, or just its last word, as the list shortens e.g. "van Riemsdyk" to "Riemsdyk"); ties are broken by team, then forward/defence. Skaters not in the list get 0; list entries not on the site are ignored. The list's Calgary code `CAL` is read as `CGY`, double-encoded names (e.g. `LafreniÃ¨re`) are repaired, and the two DET defencemen "A Johansson" are set by hand in `TSV_OVERRIDES`.
 - **Starting goalies**: the boxscore's `starter` flag for finished games. For upcoming games, ESPN's "probables" for the next 7 days. Further out shows "TBD".
 - **Opponent softness** is a z-score of the opponent's points % (or GA/GP) across the league. Each team's current numbers are blended with last season's, with last season counting as 20 games (`PRIOR_GAMES`), so early-season records don't swing the colours too much.
 - **Rest edge**: the opponent played the day before and the team didn't. Teams on the second night of a back-to-back often start their backup goalie.
