@@ -241,3 +241,5 @@ table.week th.dbd-head { text-align: left; padding-left: 10px; }
 
 .credits { max-width: 1500px; margin: 0 auto; padding: 8px 20px 28px; color: var(--text-3); font-size: 12px; }
 .credits a { color: var(--text-2); }
+
+input.narrow { min-width: 0; width: 90px; }

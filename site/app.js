@@ -2,7 +2,7 @@
 
 const S = {
   data: null,
-  players: { team: '', pos: '', q: '', win: 'season', sort: 'p', dir: -1, showAll: false },
+  players: { team: '', pos: '', q: '', maxTsv: null, win: 'season', sort: 'p', dir: -1, showAll: false },
   teams: { sel: null, sort: 'pts', dir: -1, full: false },
   sched: { range: 28, mode: 'busy', metric: 'ptsPct', sort: 'team', weeks: 2 },
 };
@@ -132,12 +132,18 @@ function initPlayers() {
       <label>Team<select id="p-team"><option value="">All teams</option>${teams.map(t => `<option value="${t.abbrev}">${esc(t.name)}</option>`).join('')}</select></label>
       <div class="ctl"><span>Stats</span>${seg('win', [['season', 'Season'], ['14', 'Last 14 days'], ['7', 'Last 7 days']], S.players.win)}</div>
       <label>Position<select id="p-pos"><option value="">All skaters</option><option value="F">Forwards</option><option value="C">C</option><option value="L">LW</option><option value="R">RW</option><option value="D">D</option></select></label>
+      <label title="Only show players whose TSV is below this value. Leave empty for everyone.">TSV under<input id="p-tsv" type="number" min="0" step="0.5" placeholder="Any" class="narrow"></label>
     </div>
     <div id="p-lines"></div>
     <div class="card scroll" id="p-table"></div>`;
   $('#p-q').addEventListener('input', e => { S.players.q = e.target.value; renderPlayers(); });
   $('#p-team').addEventListener('change', e => { S.players.team = e.target.value; renderPlayers(); });
   $('#p-pos').addEventListener('change', e => { S.players.pos = e.target.value; renderPlayers(); });
+  $('#p-tsv').addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    S.players.maxTsv = Number.isFinite(v) ? v : null;
+    renderPlayers();
+  });
   $('[data-seg="win"]').addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -205,6 +211,7 @@ function renderPlayers() {
   let rows = base.filter(p =>
     (!st.team || p.team === st.team) &&
     (!st.pos || (st.pos === 'F' ? p.pos !== 'D' : p.pos === st.pos)) &&
+    (st.maxTsv == null || (p.tsv || 0) < st.maxTsv) &&
     (!q || p.name.toLowerCase().includes(q)));
   rows = sortRows(rows, PLAYER_COLS, st.sort, st.dir);
   const limit = st.showAll || st.team ? rows.length : 100;
