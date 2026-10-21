@@ -101,7 +101,7 @@ function initTooltip() {
 
 const PLAYER_COLS = [
   { key: 'name', label: 'Player' },
-  { key: 'team', label: 'Team', fmt: r => `${logo(r.team)}${esc(r.team)}` },
+  { key: 'team', label: 'Team', fmt: r => `<button type="button" class="plink team-pick" data-team-pick="${r.team}" title="Show ${esc(r.team)}'s players and depth chart">${logo(r.team)}${esc(r.team)}</button>` },
   { key: 'pos', label: 'Pos' },
   { key: 'line', label: 'Line', title: 'Even-strength line from recent shift charts', fmt: r => r.line ? `<span class="tag">${r.line}</span>` : dash },
   { key: 'pp', label: 'PP', title: 'Power-play unit from recent shift charts', fmt: r => r.pp ? `<span class="tag ${r.pp === 'PP1' ? 'pp1' : ''}">${r.pp}</span>` : dash },
@@ -154,6 +154,14 @@ function initPlayers() {
   bindSort($('#p-table'), S.players, renderPlayers);
   $('#p-table').addEventListener('click', e => {
     if (e.target.id === 'p-more') { S.players.showAll = true; renderPlayers(); }
+    // A team name works like picking that team in the Team dropdown
+    const pick = e.target.closest('[data-team-pick]');
+    if (pick) {
+      S.players.team = pick.dataset.teamPick;
+      $('#p-team').value = S.players.team;
+      renderPlayers();
+      $('#p-lines').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   });
 }
 
@@ -627,6 +635,7 @@ function initPanel() {
       if (e.target.id === 'panel' || e.target.closest('#panel-close')) closePlayer();
       return;
     }
+    if (e.target.closest('[data-team-pick]')) return;  // handled by the Players table
     const t = e.target.closest('[data-pid], [data-gid]');
     if (!t || e.target.closest('th')) return;
     if (t.dataset.pid) openPlayer({ pid: Number(t.dataset.pid) });
