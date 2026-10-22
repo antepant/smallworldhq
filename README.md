@@ -2,7 +2,7 @@
 
 A static site with three views:
 
-- **Players**: stats and ice time (EV / PP / SH) for every skater, for the season, the last 14 days or the last 7 days, plus each player's current line and PP unit. Pick a team to see its depth chart (lines, D pairs, PP units and goalies). Click any player or goalie, in the table or the depth chart, to open their game log with an ice-time-per-game chart.
+- **Players**: stats and ice time (EV / PP / SH) for every skater, for the season, the last 14 days or the last 7 days, plus each player's current line and PP unit. Pick a team to see its depth chart (lines, D pairs, PP units and goalies). Pick **Goalies** under Position for goalie stats (depth order, SV%, GAA, GSAx), also for the 7/14-day windows. Click any player or goalie, in the table or the depth chart, to open their game log with an ice-time-per-game chart; each game shows the line and PP unit the player had in it.
 - **Teams**: standings and team stats. Click a team to see its schedule with the starting goalie for each game (confirmed for past games, probable for upcoming ones) and its goalie stats.
 - **Schedule**: a heatmap of teams by dates. It's coloured by **busyness** by default (games in the next 7 days, red = few, green = many), or by **opponent softness** (points % or goals against per game, blended with last season). In softness mode a corner marker flags **rest edges**: the opponent played yesterday and the team didn't. Back-to-backs are counted too. Below it, the **schedule breakdown** covers 1–8 Monday–Sunday weeks (pick with the Weeks filter). Teams are sorted by total games, with home games, back-to-backs and a kafenatid-style day-by-day string: a digit is a game day (the date's last digit), bold orange is home, a dot is no game.
 
@@ -34,6 +34,7 @@ Neither API is officially documented, so endpoints can change. MoneyPuck's data 
 ## How things are worked out
 
 - **Lines and PP units** are rebuilt from shift charts. For each team's last 3 games we count how many seconds each forward trio and D pair spent together at 5v5, and each 5-man unit while up a man. For even-strength lines, the most recent game counts fully and older ones at ½ and ¼ weight. PP units come from the last game only, so changes show up straight away. If that game had almost no PP time, the latest game that did is used. The top combinations without overlapping players become F1–F4, D1–D3 and PP1–PP2. Only players who dressed in the last game are eligible. This shows what the coach has been using, not a projection like DailyFaceoff's.
+- **Line and PP unit per game** (in the game log) use the same method on that one game's shift chart. Shift charts for all finished games are cached in `fetch/cache/`; one the NHL hasn't posted yet is retried on the next run.
 - **Goalie depth** (G1–G3): goalies on the team's current roster (`/v1/roster/{team}/current`), ordered by starts in the last 10 games, then season starts. The next game's probable starter is marked.
 - **Game logs** are built from the boxscores already cached for finished games, so they need no extra requests. They're written to `site/data/gamelogs.json`, which loads the first time you open a player.
 - **Expected goals** come from MoneyPuck's game-by-game skater and goalie files, joined on NHL player and game IDs.

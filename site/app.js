@@ -121,6 +121,28 @@ const PLAYER_COLS = [
   { key: 'shToi', label: 'SH', num: true, title: 'Short-handed TOI per game', fmt: r => toi(r.shToi) },
 ];
 
+const goalieDepth = r => {
+  const i = (S.data.lines[r.team]?.goalies || []).findIndex(g => g.id === r.id);
+  return i < 0 ? null : i + 1;
+};
+const GOALIE_COLS = [
+  { key: 'name', label: 'Goalie' },
+  PLAYER_COLS.find(c => c.key === 'team'),
+  { key: 'depth', label: 'Depth', title: 'Order by starts in the last 10 games (G1 = current starter)', val: goalieDepth,
+    fmt: r => goalieDepth(r) ? `<span class="tag ${goalieDepth(r) === 1 ? 'pp1' : ''}">G${goalieDepth(r)}</span>` : dash },
+  PLAYER_COLS.find(c => c.key === 'tsv'),
+  { key: 'gp', label: 'GP', num: true },
+  { key: 'gs', label: 'GS', num: true, title: 'Games started' },
+  { key: 'w', label: 'W', num: true },
+  { key: 'l', label: 'L', num: true },
+  { key: 'otl', label: 'OTL', num: true },
+  { key: 'svPct', label: 'SV%', num: true, fmt: r => dec3(r.svPct) },
+  { key: 'gaa', label: 'GAA', num: true, fmt: r => num(r.gaa, 2) },
+  { key: 'so', label: 'SO', num: true, title: 'Shutouts' },
+  { key: 'sa', label: 'SA', num: true, title: 'Shots against' },
+  { key: 'gsax', label: 'GSAx', num: true, title: `Goals saved above expected. ${MP_TIP}`, fmt: r => sgn(r.gsax, 1) },
+];
+
 function initPlayers() {
   const v = $('#view-players');
   const teams = Object.values(S.data.teams).sort((a, b) => a.name.localeCompare(b.name));
@@ -131,14 +153,19 @@ function initPlayers() {
       <label>Search<input id="p-q" type="search" placeholder="Player name"></label>
       <label>Team<select id="p-team"><option value="">All teams</option>${teams.map(t => `<option value="${t.abbrev}">${esc(t.name)}</option>`).join('')}</select></label>
       <div class="ctl"><span>Stats</span>${seg('win', [['season', 'Season'], ['14', 'Last 14 days'], ['7', 'Last 7 days']], S.players.win)}</div>
-      <label>Position<select id="p-pos"><option value="">All skaters</option><option value="F">Forwards</option><option value="C">C</option><option value="L">LW</option><option value="R">RW</option><option value="D">D</option></select></label>
+      <label>Position<select id="p-pos"><option value="">All skaters</option><option value="F">Forwards</option><option value="C">C</option><option value="L">LW</option><option value="R">RW</option><option value="D">D</option><option value="G">Goalies</option></select></label>
       <label title="Only show players whose TSV is below this value. Leave empty for everyone.">TSV under<input id="p-tsv" type="number" min="0" step="0.5" placeholder="Any" class="narrow"></label>
     </div>
     <div id="p-lines"></div>
     <div class="card scroll" id="p-table"></div>`;
   $('#p-q').addEventListener('input', e => { S.players.q = e.target.value; renderPlayers(); });
   $('#p-team').addEventListener('change', e => { S.players.team = e.target.value; renderPlayers(); });
-  $('#p-pos').addEventListener('change', e => { S.players.pos = e.target.value; renderPlayers(); });
+  $('#p-pos').addEventListener('change', e => {
+    const wasG = S.players.pos === 'G', isG = e.target.value === 'G';
+    S.players.pos = e.target.value;
+    if (wasG !== isG) { S.players.sort = isG ? 'gs' : 'p'; S.players.dir = -1; }
+    renderPlayers();
+  });
   $('#p-tsv').addEventListener('input', e => {
     const v = parseFloat(e.target.value);
     S.players.maxTsv = Number.isFinite(v) ? v : null;
@@ -213,19 +240,22 @@ function renderPlayers() {
     : 'Season totals and ice time from the NHL stats API.';
   const xgNote = S.data.xgThrough ? ` xG from MoneyPuck.com, games through ${fmtLong(S.data.xgThrough)}.` : '';
   $('#p-sub').textContent = `${sub} Line labels come from the NHL's shift charts for each team's last three games; PP units from the last game.${xgNote}`;
-  const base = recent
-    ? S.data.players.filter(p => recent.players[p.id]).map(p => ({ ...p, ...recent.players[p.id] }))
-    : S.data.players;
+  const goalies = st.pos === 'G';
+  const pool = goalies ? S.data.goalies : S.data.players;
+  const win = recent && (goalies ? recent.goalies || {} : recent.players);
+  const base = recent ? pool.filter(p => win[p.id]).map(p => ({ ...p, ...win[p.id] })) : pool;
+  const cols = goalies ? GOALIE_COLS : PLAYER_COLS;
   let rows = base.filter(p =>
     (!st.team || p.team === st.team) &&
-    (!st.pos || (st.pos === 'F' ? p.pos !== 'D' : p.pos === st.pos)) &&
+    (goalies || !st.pos || (st.pos === 'F' ? p.pos !== 'D' : p.pos === st.pos)) &&
     (st.maxTsv == null || (p.tsv || 0) < st.maxTsv) &&
     (!q || p.name.toLowerCase().includes(q)));
-  rows = sortRows(rows, PLAYER_COLS, st.sort, st.dir);
+  rows = sortRows(rows, cols, st.sort, st.dir);
   const limit = st.showAll || st.team ? rows.length : 100;
   $('#p-lines').innerHTML = st.team ? linesCard(st.team) : '';
-  $('#p-table').innerHTML = tableHtml(PLAYER_COLS, rows.slice(0, limit), { ...st, rowAttr: r => `class="clickable" data-pid="${r.id}"` }) +
-    (rows.length > limit ? `<button class="link" id="p-more">Show all ${rows.length} players</button>` : '');
+  const idAttr = goalies ? 'data-gid' : 'data-pid';
+  $('#p-table').innerHTML = tableHtml(cols, rows.slice(0, limit), { ...st, rowAttr: r => `class="clickable" ${idAttr}="${r.id}"` }) +
+    (rows.length > limit ? `<button class="link" id="p-more">Show all ${rows.length} ${goalies ? 'goalies' : 'players'}</button>` : '');
 }
 
 // ------------------------------------------------------------------ teams
@@ -597,13 +627,15 @@ async function openPlayer({ pid, gid }) {
         ${p.xg != null ? `· <span title="${MP_TIP}">${num(p.xg, 2)} xG · ${sgn(p.gMinusXg)} G−xG</span>` : ''}</span></div></div>
       ${toiChart(rows)}
       <div class="scroll"><table class="data"><thead><tr><th>Date</th><th>Opp</th><th>Result</th>
+        <th title="Line and PP unit in that game, rebuilt from its shift chart">Role</th>
         <th class="num">G</th><th class="num">A</th><th class="num">P</th><th class="num">+/-</th><th class="num">SOG</th><th class="num" title="${MP_TIP}">xG</th><th class="num" title="Goals minus expected goals">G−xG</th>
         <th class="num">Hits</th><th class="num">BLK</th><th class="num">PPG</th><th class="num">PIM</th><th class="num">TOI</th><th class="num">EV</th><th class="num">PP</th><th class="num">SH</th><th class="num">Shifts</th><th class="num">FO%</th></tr></thead>
         <tbody>${rows.map(r => `<tr><td>${fmtLong(r.date)}</td><td>${oppCell(r)}</td><td>${resultCell(r)}</td>
+          <td class="role">${r.line ? `<span class="tag">${r.line}</span>` : ''}${r.ppUnit ? `<span class="tag ${r.ppUnit === 'PP1' ? 'pp1' : ''}">${r.ppUnit}</span>` : ''}${!r.line && !r.ppUnit ? dash : ''}</td>
           <td class="num">${r.g}</td><td class="num">${r.a}</td><td class="num"><b>${r.p}</b></td><td class="num">${r.pm > 0 ? '+' + r.pm : r.pm}</td>
           <td class="num">${r.sog}</td><td class="num">${num(r.xg, 2)}</td><td class="num">${r.xg == null ? dash : sgn(r.g - r.xg)}</td><td class="num">${r.hits}</td><td class="num">${r.blk}</td><td class="num">${r.ppg}</td><td class="num">${r.pim}</td>
           <td class="num">${toi(r.toi)}</td><td class="num">${toi(r.evToi)}</td><td class="num"><b>${toi(r.ppToi)}</b></td><td class="num">${toi(r.shToi)}</td><td class="num">${r.shifts}</td><td class="num">${r.fo == null ? dash : pct(r.fo, 0)}</td></tr>`).join('')
-          || '<tr><td colspan="20" class="muted">No games yet.</td></tr>'}</tbody></table></div>`;
+          || '<tr><td colspan="21" class="muted">No games yet.</td></tr>'}</tbody></table></div>`;
   } else {
     const g = D.goalies.find(x => x.id === gid) || {};
     const depthTeam = Object.entries(D.lines).find(([, ln]) => (ln.goalies || []).some(x => x.id === gid));

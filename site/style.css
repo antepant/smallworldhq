@@ -246,3 +246,6 @@ input.narrow { min-width: 0; width: 90px; }
 
 button.team-pick { text-decoration: none; white-space: nowrap; }
 button.team-pick:hover { text-decoration: underline; }
+
+table.data td.role { white-space: nowrap; }
+table.data td.role .tag + .tag { margin-left: 4px; }

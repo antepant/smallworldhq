@@ -179,13 +179,23 @@ def fetch_players(season, today):
         stat_keys = ("gp", "g", "a", "p", "pm", "pim", "sog", "ppp", "shp", "toi", "evToi", "ppToi", "shToi", "shifts")
         recent[str(days)] = {"from": str(start), "to": str(today),
                              "players": {r["id"]: {k: r[k] for k in stat_keys} for r in skater_rows(season, exp)}}
-    goalies = [{
+    goalies = goalie_rows(season)
+    goalie_keys = ("gp", "gs", "w", "l", "otl", "svPct", "gaa", "so", "sa", "sv", "ga")
+    for days in RECENT_WINDOWS:
+        win = recent[str(days)]
+        exp = f'gameDate>="{win["from"]}" and gameDate<="{win["to"]}" and gameTypeId=2'
+        win["goalies"] = {r["id"]: {k: r[k] for k in goalie_keys} for r in goalie_rows(season, exp)}
+    return players, recent, goalies
+
+
+def goalie_rows(season, exp=None):
+    return [{
         "id": r["playerId"], "name": r["goalieFullName"],
         "team": (r.get("teamAbbrevs") or "").split(",")[-1],
         "gp": r["gamesPlayed"], "gs": r["gamesStarted"], "w": r["wins"], "l": r["losses"],
         "otl": r["otLosses"], "svPct": r["savePct"], "gaa": r["goalsAgainstAverage"], "so": r["shutouts"],
-    } for r in stats_report("goalie", "summary", season)]
-    return players, recent, goalies
+        "sa": r.get("shotsAgainst"), "sv": r.get("saves"), "ga": r.get("goalsAgainst"),
+    } for r in stats_report("goalie", "summary", season, exp)]
 
 
 # ---------------------------------------------------------------- schedule + goalies
@@ -279,6 +289,8 @@ def count_units(game_id, team):
     us = {p["playerId"] for grp in ("forwards", "defense") for p in box["playerByGameStats"][side][grp]}
 
     shifts = get_json(f"{STATS}/shiftcharts?cayenneExp=gameId={game_id}", f"shifts_{game_id}.json")["data"]
+    if not shifts:  # the NHL sometimes posts shift charts a while after the game; try again next run
+        (CACHE / f"shifts_{game_id}.json").unlink(missing_ok=True)
     on_us = collections.defaultdict(set)
     n_them = collections.Counter()
     for r in shifts:
@@ -338,7 +350,22 @@ def derive_lines(game_ids, team):
                 dst[k] += v * w
         if pp is None and sum(u.values()) >= 60:
             pp, pp_game = u, gid
-    pp = pp or collections.Counter()
+    forwards, defense, pp_units = assign_units(trios, pairs, pp or collections.Counter(), dressed_f, dressed_d)
+
+    def fmt(groups):
+        return [{"players": sorted(c), "sec": round(s)} for c, s in groups]
+
+    return {
+        "gameIds": list(game_ids),
+        "forwards": fmt(forwards),
+        "defense": fmt(defense),
+        "pp": fmt(pp_units),
+        "ppGameId": pp_game,
+    }
+
+
+def assign_units(trios, pairs, pp, dressed_f, dressed_d):
+    """Pick F1-F4, D1-D3 and PP1-PP2 from seconds-together counters. Returns lists of (players, seconds)."""
     dressed = dressed_f | dressed_d
 
     def greedy(counter, n, pool, size, min_sec=20):
@@ -365,17 +392,27 @@ def derive_lines(game_ids, team):
             break
         if combo <= dressed and all(len(combo & u) <= 1 for u, _ in pp_units):
             pp_units.append((combo, sec))
+    return greedy(trios, 4, dressed_f, 3), greedy(pairs, 3, dressed_d, 2), pp_units
 
-    def fmt(groups):
-        return [{"players": sorted(c), "sec": round(s)} for c, s in groups]
 
-    return {
-        "gameIds": list(game_ids),
-        "forwards": fmt(greedy(trios, 4, dressed_f, 3)),
-        "defense": fmt(greedy(pairs, 3, dressed_d, 2)),
-        "pp": fmt(pp_units),
-        "ppGameId": pp_game,
-    }
+def game_roles(game):
+    """playerId -> (line, PP unit) for one finished game, e.g. ("F2", "PP1") or ("D1", None)."""
+    roles = {}
+    for team in (game["home"], game["away"]):
+        trios, pairs, pp, dressed_f, dressed_d = count_units(game["id"], team)
+        if not trios and not pairs:
+            continue  # no shift chart yet
+        forwards, defense, pp_units = assign_units(trios, pairs, pp, dressed_f, dressed_d)
+        for prefix, groups in (("F", forwards), ("D", defense)):
+            for i, (combo, _) in enumerate(groups, 1):
+                for pid in combo:
+                    roles[pid] = (f"{prefix}{i}", None)
+        for i, (combo, _) in enumerate(pp_units, 1):
+            for pid in combo:
+                line = roles.get(pid, (None, None))[0]
+                if roles.get(pid, (None, None))[1] is None:
+                    roles[pid] = (line, f"PP{i}")
+    return roles
 
 
 def fetch_lines(games, team_abbrevs):
@@ -431,7 +468,7 @@ def goalie_depth(games, goalie_stats, team_abbrevs, recent_n=10):
 
 
 SKATER_LOG_COLS = ["gameId", "side", "g", "a", "p", "pm", "pim", "sog", "hits", "blk", "ppg", "toi", "shifts", "fo",
-                   "evToi", "ppToi", "shToi"]
+                   "evToi", "ppToi", "shToi", "line", "ppUnit"]
 GOALIE_LOG_COLS = ["gameId", "side", "starter", "decision", "toi", "sa", "sv", "ga", "evGa", "ppGa"]
 
 
@@ -464,6 +501,7 @@ def build_gamelogs(games):
         if g["state"] not in FINAL_STATES:
             continue
         box = boxscore(g["id"], True)
+        roles = game_roles(g)
         for side, flag in (("homeTeam", "h"), ("awayTeam", "a")):
             pg = box["playerByGameStats"][side]
             for p in pg["forwards"] + pg["defense"]:
@@ -471,7 +509,8 @@ def build_gamelogs(games):
                     g["id"], flag, p["goals"], p["assists"], p["points"], p["plusMinus"], p["pim"],
                     p["sog"], p["hits"], p["blockedShots"], p["powerPlayGoals"], mmss(p["toi"]),
                     p["shifts"], round(p["faceoffWinningPctg"], 3) if p.get("faceoffWinningPctg") else None,
-                    *toi_split.get((p["playerId"], g["id"]), (None, None, None))])
+                    *toi_split.get((p["playerId"], g["id"]), (None, None, None)),
+                    *roles.get(p["playerId"], (None, None))])
             for p in pg["goalies"]:
                 if not mmss(p.get("toi")):
                     continue  # dressed as backup, didn't play
@@ -532,7 +571,7 @@ def load_tsv_list():
         f = line.split("\t")
         while f and not f[0].strip():
             f.pop(0)  # some lines start with a stray tab
-        if len(f) < 4 or f[1] == "G":
+        if len(f) < 4:
             continue
         try:
             price = float(f[3])
@@ -540,28 +579,31 @@ def load_tsv_list():
             continue
         initial, _, last = _fix_mojibake(f[0].strip()).partition(" ")
         rows.append({"ini": "".join(_fold(initial))[:1], "last": _fold(last), "team": TSV_TEAM_FIX.get(f[2], f[2]),
-                     "fwd": f[1] in ("C", "W"), "tsv": price})
+                     "fwd": f[1] in ("C", "W"), "goalie": f[1] == "G", "tsv": price})
     return rows
 
 
-def add_tsv(players):
-    """Set p["tsv"] for every skater: initial + surname (full or last word), then team, then F/D."""
+def add_tsv(players, goalies):
+    """Set p["tsv"] for every skater and goalie: initial + surname (full or last word), then team, then F/D."""
     rows = load_tsv_list()
+    for g in goalies:
+        g["pos"] = "G"
     matched = 0
-    for p in players:
+    for p in players + goalies:
         if p["name"] in TSV_OVERRIDES:
             p["tsv"] = TSV_OVERRIDES[p["name"]]
             matched += 1
             continue
         first, _, last = p["name"].partition(" ")
         ini, surname = "".join(_fold(first))[:1], _fold(last)
-        cands = [r for r in rows if r["ini"] == ini and surname and (r["last"] == surname or r["last"] == surname[-1:])]
+        cands = [r for r in rows if r["goalie"] == (p["pos"] == "G") and r["ini"] == ini and surname
+                 and (r["last"] == surname or r["last"] == surname[-1:])]
         for narrow in (lambda r: r["team"] == p["team"], lambda r: r["fwd"] == (p["pos"] != "D")):
             if len(cands) > 1 and any(narrow(r) for r in cands):
                 cands = [r for r in cands if narrow(r)]
         p["tsv"] = cands[0]["tsv"] if len(cands) == 1 else 0
         matched += len(cands) == 1
-    print(f"  TSV: {matched} of {len(players)} skaters matched in {TSV_FILE.name}")
+    print(f"  TSV: {matched} of {len(players) + len(goalies)} skaters and goalies matched in {TSV_FILE.name}")
 
 
 # ---------------------------------------------------------------- MoneyPuck expected goals
@@ -625,6 +667,13 @@ def fetch_moneypuck(season, recent):
                 totals[w][pid]["xg"] += xg
                 totals[w][pid]["mpG"] += g
     goalie_games = {(int(r["playerId"]), int(r["gameId"])): (round(fnum(r["xGoals"]) or 0.0, 2), int(fnum(r["goals"]) or 0)) for r in gk}
+    gk_totals = {w: collections.defaultdict(lambda: {"xga": 0.0, "ga": 0}) for w in windows}
+    for r in gk:
+        for w, (lo, hi) in windows.items():
+            if lo is None or lo <= r["gameDate"] <= hi:
+                gk_totals[w][int(r["playerId"])]["xga"] += fnum(r["xGoals"]) or 0.0
+                gk_totals[w][int(r["playerId"])]["ga"] += int(fnum(r["goals"]) or 0)
+    totals["goalies"] = gk_totals
 
     teams_5v5 = {r["team"]: r for r in mp_rows(MP_SEASON.format(year=year, kind="teams"), f"teams_{year}.csv", "5on5")}
     team_xg = {}
@@ -661,6 +710,10 @@ def add_xg(season, players, recent, teams, goalies, gamelogs):
         t.update(team_xg.get(ab, {"xgfPct": None, "xgfPerGame": None, "xgaPerGame": None}))
     for g in goalies:
         g.update(goalie_xg.get(g["id"], {"xga": None, "gsax": None}))
+    for w, win in recent.items():
+        for pid, row in win.get("goalies", {}).items():
+            t = totals["goalies"][w].get(pid)
+            row["gsax"] = round(t["xga"] - t["ga"], 2) if t else None
     gamelogs["skaterCols"].append("xg")
     for pid, rows in gamelogs["skaters"].items():
         for r in rows:
@@ -699,7 +752,7 @@ def main():
         lines.setdefault(ab, {"forwards": [], "defense": [], "pp": [], "date": None, "opp": None})
         lines[ab].update(d)
     print("game logs..."); gamelogs = build_gamelogs(games)
-    print("TSV..."); add_tsv(players)
+    print("TSV..."); add_tsv(players, goalies)
     print("MoneyPuck xG..."); add_xg(args.season, players, recent, teams, goalies, gamelogs)
 
     labels = player_labels(lines)
