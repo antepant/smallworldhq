@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- SmallworldHQ: a hockey puck on an ice-blue tile; the puck's face doubles as a tiny globe -->
+  <rect width="64" height="64" rx="14" fill="#2a78d6"/>
+  <!-- puck side -->
+  <path d="M10 30v10c0 6.6 9.8 12 22 12s22-5.4 22-12V30z" fill="#0b0b0b"/>
+  <!-- puck face -->
+  <ellipse cx="32" cy="30" rx="22" ry="12" fill="#2b2b2b"/>
+  <!-- globe lines on the face -->
+  <ellipse cx="32" cy="30" rx="22" ry="12" fill="none" stroke="#cde2fb" stroke-width="2.5"/>
+  <ellipse cx="32" cy="30" rx="9" ry="12" fill="none" stroke="#cde2fb" stroke-width="2.5"/>
+  <path d="M10.5 30h43" stroke="#cde2fb" stroke-width="2.5"/>
+</svg>
