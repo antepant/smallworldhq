@@ -99,6 +99,11 @@ function initTooltip() {
 
 // ------------------------------------------------------------------ players
 
+function nextGames(ab, days) {
+  const from = today(), to = addDays(from, days);
+  return (S.data.byTeam[ab] || []).filter(g => !g.final && g.date >= from && g.date < to).length;
+}
+
 const PLAYER_COLS = [
   { key: 'name', label: 'Player' },
   { key: 'team', label: 'Team', fmt: r => `<button type="button" class="plink team-pick" data-team-pick="${r.team}" title="Show ${esc(r.team)}'s players and depth chart">${logo(r.team)}${esc(r.team)}</button>` },
@@ -106,6 +111,8 @@ const PLAYER_COLS = [
   { key: 'line', label: 'Line', title: 'Even-strength line from recent shift charts', fmt: r => r.line ? `<span class="tag">${r.line}</span>` : dash },
   { key: 'pp', label: 'PP', title: 'Power-play unit from recent shift charts', fmt: r => r.pp ? `<span class="tag ${r.pp === 'PP1' ? 'pp1' : ''}">${r.pp}</span>` : dash },
   { key: 'tsv', label: 'TSV', num: true, title: 'Terrier starting value ($ from players.txt; 0 = not in the list)', fmt: r => r.tsv ? r.tsv.toFixed(2) : '<span class="muted">0</span>' },
+  { key: 'next7', label: 'Nx7', num: true, title: "Team's games in the next 7 days, from today (not counting games already finished)", val: r => nextGames(r.team, 7), fmt: r => nextGames(r.team, 7) },
+  { key: 'next14', label: 'Nx14', num: true, title: "Team's games in the next 14 days, from today (not counting games already finished)", val: r => nextGames(r.team, 14), fmt: r => nextGames(r.team, 14) },
   { key: 'gp', label: 'GP', num: true },
   { key: 'g', label: 'G', num: true },
   { key: 'a', label: 'A', num: true },
@@ -131,6 +138,8 @@ const GOALIE_COLS = [
   { key: 'depth', label: 'Depth', title: 'Order by starts in the last 10 games (G1 = current starter)', val: goalieDepth,
     fmt: r => goalieDepth(r) ? `<span class="tag ${goalieDepth(r) === 1 ? 'pp1' : ''}">G${goalieDepth(r)}</span>` : dash },
   PLAYER_COLS.find(c => c.key === 'tsv'),
+  PLAYER_COLS.find(c => c.key === 'next7'),
+  PLAYER_COLS.find(c => c.key === 'next14'),
   { key: 'gp', label: 'GP', num: true },
   { key: 'gs', label: 'GS', num: true, title: 'Games started' },
   { key: 'w', label: 'W', num: true },
