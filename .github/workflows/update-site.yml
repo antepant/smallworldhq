@@ -28,11 +28,11 @@ jobs:
       run: ${{ steps.gate.outputs.run }}
       kind: ${{ steps.gate.outputs.kind }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: fetch/should_update.py
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Is an update due?
@@ -57,14 +57,14 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       # Finished-game boxscores, shift charts and per-game TOI never change; keep them between runs
       - name: Restore fetch cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: fetch/cache
           key: fetch-cache-${{ github.run_id }}
@@ -73,10 +73,10 @@ jobs:
       - name: Fetch data
         run: python fetch/fetch_data.py --kind ${{ needs.check.outputs.kind }}
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
       - name: Deploy to GitHub Pages
         id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
