@@ -66,10 +66,29 @@ def get_json(url, cache_name=None, retries=3):
     return data
 
 
+# The stats API returns at most 100 rows per request (limit=-1 no longer means "all"),
+# so reports are read page by page, sorted on an id so pages don't overlap.
+STATS_PAGE = 100
+
+
+def stats_pages(kind, report, exp, extra=""):
+    sort_key = "teamId" if kind == "team" else "playerId"
+    sort = urllib.parse.quote(json.dumps([{"property": sort_key, "direction": "ASC"},
+                                          {"property": "gameId", "direction": "ASC"}] if "isGame" in extra
+                                         else [{"property": sort_key, "direction": "ASC"}]))
+    rows, start = [], 0
+    while True:
+        url = (f"{STATS}/{kind}/{report}?start={start}&limit={STATS_PAGE}&sort={sort}{extra}"
+               f"&cayenneExp={urllib.parse.quote(exp)}")
+        page = get_json(url)
+        rows += page["data"]
+        start += STATS_PAGE
+        if not page["data"] or start >= page.get("total", 0):
+            return rows
+
+
 def stats_report(kind, report, season, exp=None):
-    exp = exp or f"seasonId={season} and gameTypeId=2"
-    url = f"{STATS}/{kind}/{report}?limit=-1&cayenneExp={urllib.parse.quote(exp)}"
-    return get_json(url)["data"]
+    return stats_pages(kind, report, exp or f"seasonId={season} and gameTypeId=2")
 
 
 def default_season(today):
@@ -485,9 +504,15 @@ def per_game_toi(games):
         done = [g for g in gs if g["state"] in FINAL_STATES]
         if not done:
             continue
-        exp = urllib.parse.quote(f'gameDate="{day}" and gameTypeId=2')
-        url = f"{STATS}/skater/timeonice?isGame=true&limit=-1&cayenneExp={exp}"
-        rows = get_json(url, f"toi_{day}.json" if len(done) == len(gs) else None)["data"]
+        # v2: earlier cache files were cut off at 100 rows by the API's page limit
+        cache = CACHE / f"toi_v2_{day}.json"
+        if cache.exists():
+            rows = json.loads(cache.read_text(encoding="utf-8"))
+        else:
+            rows = stats_pages("skater", "timeonice", f'gameDate="{day}" and gameTypeId=2', "&isGame=true")
+            if len(done) == len(gs):
+                CACHE.mkdir(parents=True, exist_ok=True)
+                cache.write_text(json.dumps(rows), encoding="utf-8")
         for r in rows:
             out[(r["playerId"], r["gameId"])] = (r.get("evTimeOnIce"), r.get("ppTimeOnIce"), r.get("shTimeOnIce"))
     return out
