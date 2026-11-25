@@ -55,7 +55,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy_retry.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -77,6 +77,16 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: site
+      # Right after an upload, deploy-pages sometimes can't see the artifact yet
+      # ("No artifacts named github-pages"), so a failed deploy waits and tries again.
       - name: Deploy to GitHub Pages
         id: deploy
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - name: Wait before retrying the deploy
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 90
+      - name: Deploy to GitHub Pages (retry)
+        id: deploy_retry
+        if: steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v5

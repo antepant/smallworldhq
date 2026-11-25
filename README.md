@@ -57,7 +57,7 @@ The workflow in `.github/workflows/update-site.yml` fetches the data on GitHub's
 - **pre-game:** it's within an hour of the day's first puck drop and the site hasn't been updated since that hour began, or
 - **post-game:** every game of the day is final, at least 3 h 45 min have passed since the last puck drop (the feed has no end time, so that's ~2 h 45 min of game plus an hour), and the site hasn't been updated since.
 
-Otherwise the check stops after a few seconds. Days without games get no update. GitHub's timer often runs 5–15 minutes late and can occasionally skip a run, so "an hour" is approximate. To test the check for any moment: `python fetch/should_update.py --now 2026-10-15T22:10:00Z`.
+Otherwise the check stops after a few seconds. Days without games get no update. GitHub's timer is unreliable: on a quiet repository it may fire only a few times a day instead of every 30 minutes. A late wake-up still does the pre-game update as long as the day's last game hasn't started, so "an hour" is approximate. If a deploy fails because the Pages artifact isn't visible yet, the workflow waits 90 seconds and tries once more. To test the check for any moment: `python fetch/should_update.py --now 2026-10-15T22:10:00Z`.
 
 **One-time setup**
 

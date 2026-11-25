@@ -3,8 +3,9 @@
 GitHub Actions wakes this up every 30 minutes. It looks at the NHL slates (game days)
 for yesterday and today and asks for an update when:
 
-  pre-game:  it is within PRE_GAME before a slate's first puck drop, and the live site
-             hasn't been updated since that window opened.
+  pre-game:  it is at most PRE_GAME before a slate's first puck drop (or later, if the
+             timer ran late, as long as the slate's last game hasn't started), and the
+             live site hasn't been updated since that window opened.
   post-game: every game of a slate is final, at least LAST_GAME_LENGTH + POST_GAME has
              passed since its last puck drop, and the site hasn't been updated since then.
 
@@ -54,7 +55,9 @@ def decide(now, slates, updated):
         starts = [parse_utc(g["startTimeUTC"]) for g in games]
         first, last = min(starts), max(starts)
         pre_due = first - PRE_GAME
-        if pre_due <= now < first and (updated is None or updated < pre_due):
+        # GitHub's timer can be hours late, so a late wake-up still does the pre-game update
+        # as long as some of the slate's games haven't started yet.
+        if pre_due <= now < last and (updated is None or updated < pre_due):
             return "pre", f"{day}: first game {first:%H:%M} UTC"
         post_due = last + LAST_GAME_LENGTH + POST_GAME
         all_final = all(g.get("gameState") in FINAL_STATES for g in games)
